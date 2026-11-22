@@ -1,0 +1,9 @@
+/* pxd Speak: the sentence being read gets a soft tint, the word being read a bright marker. */
+.pxd-speak-w { border-radius: 3px; transition: background-color .12s ease, box-shadow .12s ease; cursor: pointer; }
+.pxd-speak-s { background-color: rgba(0, 200, 255, .13) !important; }
+.pxd-speak-on {
+  background-color: #ffe14d !important;
+  color: #141414 !important;
+  box-shadow: 0 0 0 2px #ffe14d, 0 0 10px 2px rgba(255, 225, 77, .55) !important;
+  -webkit-text-fill-color: #141414 !important;
+}
