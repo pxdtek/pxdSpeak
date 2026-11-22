@@ -125,7 +125,9 @@
   }
 
   chrome.runtime.onMessage.addListener((m, sender, reply) => {
-    if (m.type === "grab") {
+    if (m.type === "ping") {
+      reply("pong");
+    } else if (m.type === "grab") {
       if (!document.hasFocus()) return;           // another window's page answers
       const r = wrapSelection();
       if (!r) return;                              // no answer: the app falls back to copying
@@ -136,6 +138,10 @@
       if (!r) return;
       pending = true;
       chrome.runtime.sendMessage({ type: "read", words: r.words, blocks: r.blocks, start: 0 });
+    } else if (m.type === "toast") {
+      toast(m.text);
+      unwrap();
+      pending = false;
     } else if (m.type === "start") {
       current = m.id;
       pending = false;
@@ -156,6 +162,16 @@
     pending = true;
     chrome.runtime.sendMessage({ type: "read", words: spans.map(s => s.textContent), blocks: blocksNow(), start: Number(t.dataset.pxdI) });
   }, true);
+
+  function toast(text) {
+    const t = document.createElement("div");
+    t.textContent = text;
+    t.style.cssText = "position:fixed;right:18px;bottom:18px;z-index:2147483647;background:#161922;color:#e8eaf0;" +
+      "font:600 14px/1.4 system-ui,Segoe UI,sans-serif;padding:12px 16px;border-radius:10px;border:1px solid #7a2a33;" +
+      "box-shadow:0 6px 24px rgba(0,0,0,.4)";
+    document.documentElement.appendChild(t);
+    setTimeout(() => t.remove(), 4500);
+  }
 
   function blocksNow() {
     const out = [];

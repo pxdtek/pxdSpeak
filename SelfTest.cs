@@ -6,6 +6,7 @@ using Avalonia.VisualTree;
 using pxdSpeak.Services;
 using pxdSpeak.Speech;
 using pxdSpeak.Views;
+using pxdSpeak.Platform;
 
 namespace pxdSpeak;
 
@@ -228,6 +229,14 @@ public static class SelfTest
             Thread.Sleep(50);
         Thread.Sleep(200);
         Check(r, "bridge: extension linked", bridge.Count == 1 && bridge.Browsers.FirstOrDefault() == "TestBrowser", string.Join(",", bridge.Browsers));
+
+        // The right-click menu path: the page sends "read" on its own.
+        BrowserRead? asked = null;
+        bridge.ReadRequested += rr => asked = rr;
+        Send(new { type = "read", words = SampleWords, blocks = new[] { 8 }, start = 4 });
+        for (var i = 0; i < 40 && asked is null; i++)
+            Thread.Sleep(25);
+        Check(r, "bridge: a read from the page menu arrives", asked?.Words.Count == SampleWords.Length && asked.Start == 4);
 
         var grabbed = bridge.Grab(TimeSpan.FromSeconds(2)).GetAwaiter().GetResult();
         Check(r, "bridge: grab returns the page's words", grabbed?.Words.Count == SampleWords.Length && grabbed.BlockEnds.Contains(8));

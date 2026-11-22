@@ -43,7 +43,7 @@ async function fromApp(m) {
     try {
       const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
       if (tab && tab.id !== undefined) {
-        reply = await chrome.tabs.sendMessage(tab.id, { type: "grab" }, { frameId: 0 });
+        reply = await toTab(tab.id, { type: "grab" });
         if (reply && reply.words) owner = tab.id;
       }
     } catch (e) { reply = null; }
@@ -59,6 +59,14 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg.type === "read" && sender.tab) {
     owner = sender.tab.id;
     send({ type: "read", words: msg.words, blocks: msg.blocks, start: msg.start || 0 }, true);
+    // The app isn't running: say so on the page instead of doing nothing.
+    const tabId = sender.tab.id;
+    setTimeout(() => {
+      if (!(ws && ws.readyState === WebSocket.OPEN)) {
+        queue.length = 0;
+        chrome.tabs.sendMessage(tabId, { type: "toast", text: "pxd Speak isn't running. Start it, then try again." }, { frameId: 0 }).catch(() => {});
+      }
+    }, 2500);
   } else if (msg.type === "stop") {
     send({ type: "stop" });
   } else if (msg.type === "status") {
@@ -67,13 +75,34 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   }
 });
 
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({ id: "pxd-speak-read", title: "Read aloud with pxd Speak", contexts: ["selection"] });
+// Tabs that were already open when the extension was added (or updated) have no page script yet: add it to them.
+async function inject(tabId) {
+  await chrome.scripting.insertCSS({ target: { tabId }, files: ["content.css"] });
+  await chrome.scripting.executeScript({ target: { tabId }, files: ["content.js"] });
+}
+
+/** Sends to the page script, adding the script first if the tab doesn't have it yet. */
+async function toTab(tabId, message) {
+  let there = false;
+  try { there = await chrome.tabs.sendMessage(tabId, { type: "ping" }, { frameId: 0 }) === "pong"; } catch (e) { there = false; }
+  if (!there) {
+    try { await inject(tabId); } catch (e) { return undefined; }   // chrome:// pages, the Web Store: not allowed
+  }
+  try { return await chrome.tabs.sendMessage(tabId, message, { frameId: 0 }); } catch (e) { return undefined; }
+}
+
+chrome.runtime.onInstalled.addListener(async () => {
+  chrome.contextMenus.removeAll(() =>
+    chrome.contextMenus.create({ id: "pxd-speak-read", title: "Read aloud with pxd Speak", contexts: ["selection"] }));
+  for (const tab of await chrome.tabs.query({}))
+    if (tab.id !== undefined && /^(https?|file):/.test(tab.url || "")) inject(tab.id).catch(() => {});
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === "pxd-speak-read" && tab && tab.id !== undefined)
-    chrome.tabs.sendMessage(tab.id, { type: "readSelection" }, { frameId: 0 }).catch(() => {});
+  if (info.menuItemId === "pxd-speak-read" && tab && tab.id !== undefined) {
+    connect();
+    toTab(tab.id, { type: "readSelection" });
+  }
 });
 
 // Stay linked: the app may start after the browser, and the browser puts idle extension workers to sleep.
