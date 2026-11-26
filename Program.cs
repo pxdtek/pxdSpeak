@@ -26,7 +26,8 @@ internal static class Program
         if (Cli.Run(args) is { } code)
             return code;
 
-        if (!Commands.HasAction(args) && pxdStandard.pxdUpdate.BeforeStart(UpdateRepo, UpdateAsset, args))
+        // The Store updates the Store build itself; apps from the Store may not update themselves.
+        if (!Commands.HasAction(args) && !Platform.Packaged.IsPackaged && pxdStandard.pxdUpdate.BeforeStart(UpdateRepo, UpdateAsset, args))
             return 0;
 
         pxdStandard.pxdChrome.Configure(TrayLink.AppId, AppSettings.Folder);

@@ -12,6 +12,10 @@ public sealed class Speaker : IDisposable
     private int _grabbing;
     private BrowserBridge.Connection? _trackedOwner;
     private int _trackedId;
+    private bool _inApp;
+
+    /// <summary>Raised on the UI thread when a reading started by the in-app reader is over (finished, stopped or replaced).</summary>
+    public event Action? InAppEnded;
 
     /// <summary>The link to the browser extension (interactive app only).</summary>
     public BrowserBridge? Bridge { get; }
@@ -50,6 +54,7 @@ public sealed class Speaker : IDisposable
             {
                 Banner.Hide();
                 EndTracked();
+                EndInApp();
             }
             StateChanged?.Invoke(s);
         });
@@ -77,6 +82,7 @@ public sealed class Speaker : IDisposable
         }
 
         EndTracked();
+        EndInApp();
         var id = ++_trackedId;
         var conn = r.From;
         _trackedOwner = conn;
@@ -90,6 +96,35 @@ public sealed class Speaker : IDisposable
             OnWord = (i, first, last) => _ = conn.Send(new { type = "word", id, i, f = first, l = last }),
         }, voice, (float)Settings.Speed);
         ShowReadingBanner(voice);
+    }
+
+    /// <summary>
+    /// Reads words from the app's own Read tab, reporting each word as it is heard. False (with a notice) when the voice
+    /// isn't downloaded. No corner banner: the window shows what is being read.
+    /// </summary>
+    public bool ReadInApp(TrackedText tracked)
+    {
+        var voice = CurrentVoice;
+        if (!VoiceStore.IsInstalled(voice))
+        {
+            Notice?.Invoke(new Notice("VOICE NOT DOWNLOADED", $"Download {voice.Name} first, or pick another voice", Warning: true));
+            return false;
+        }
+
+        EndTracked();
+        Banner.Hide();
+        _inApp = true;
+        Reader.Volume = (float)Settings.Volume;
+        Reader.SpeakTracked(tracked, voice, (float)Settings.Speed);
+        return true;
+    }
+
+    private void EndInApp()
+    {
+        if (!_inApp)
+            return;
+        _inApp = false;
+        InAppEnded?.Invoke();
     }
 
     /// <summary>Tells the page that its reading is over (it takes the highlight away).</summary>
@@ -210,6 +245,7 @@ public sealed class Speaker : IDisposable
         }
 
         EndTracked();
+        EndInApp();
         Reader.Volume = (float)Settings.Volume;
         Reader.Speak(text, voice, (float)Settings.Speed);
         ShowReadingBanner(voice);

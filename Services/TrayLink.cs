@@ -21,7 +21,14 @@ public sealed class TrayLink : IDisposable
         _apply = apply;
         _post = post;
         Update();
-        _watch = pxdLink.Watch(() => _post(Update));
+        // The Store build's AppData is private package storage, so pxd Toolkit can't share the file; never fail over it.
+        try { _watch = pxdLink.Watch(() => _post(Update)); }
+        catch { _watch = new Nothing(); }
+    }
+
+    private sealed class Nothing : IDisposable
+    {
+        public void Dispose() { }
     }
 
     public bool Visible => _applied ?? true;
@@ -32,13 +39,21 @@ public sealed class TrayLink : IDisposable
     /// <summary>The "Show tray icon" switch: writes toolkit.json (so pxd Toolkit agrees) and applies it now.</summary>
     public void Set(bool visible)
     {
-        pxdLink.SetTrayIconVisible(AppId, visible);
-        Update();
+        try { pxdLink.SetTrayIconVisible(AppId, visible); }
+        catch { /* the switch just doesn't stick */ }
+        if (_applied != visible)
+        {
+            _applied = visible;
+            _apply(visible);
+            Changed?.Invoke(visible);
+        }
     }
 
     private void Update()
     {
-        var visible = pxdLink.TrayIconVisible(AppId);
+        bool visible;
+        try { visible = pxdLink.TrayIconVisible(AppId); }
+        catch { visible = _applied ?? true; }
         if (visible == _applied)
             return;
         _applied = visible;

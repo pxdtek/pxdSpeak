@@ -40,8 +40,14 @@ public sealed class AppSettings
 
     public bool StartInTray { get; set; }
 
-    /// <summary>The text in the "Try it" box.</summary>
-    public string TryText { get; set; } = "Hi! Select any text, press the hotkey, and I'll read it to you in this voice.";
+    /// <summary>The text on the Read tab (kept between starts).</summary>
+    public string TryText { get; set; } = "";
+
+    /// <summary>The three first-run cards on the Read tab have been closed (Settings › Show the intro brings them back).</summary>
+    public bool IntroSeen { get; set; }
+
+    /// <summary>Text size on the Read tab.</summary>
+    public double ReaderFontSize { get; set; } = 17;
 
     /// <summary>%APPDATA%\pxdSpeak, or PXDSPEAK_DATA_DIR (tests).</summary>
     public static string Folder =>

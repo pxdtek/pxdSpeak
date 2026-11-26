@@ -362,6 +362,34 @@ public sealed class Reader : IDisposable
         return TimeSpan.FromSeconds(samples.Count / (double)rate);
     }
 
+    /// <summary>
+    /// The whole audio for <paramref name="text"/> (for saving to a file), made a piece at a time so it can report
+    /// progress (0…1) and be cancelled. Runs on the caller's thread; it can run while something is being read aloud.
+    /// </summary>
+    public (float[] Samples, int Rate) Render(string text, VoiceInfo voice, float speed, Action<double>? progress, CancellationToken ct)
+    {
+        text = TextPrep.Clean(text);
+        var pieces = TextPrep.Pieces(text, 400).ToList();
+        var samples = new List<float>();
+        var rate = 22050;
+        for (var i = 0; i < pieces.Count; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            // A fresh synth per piece: the shared model may be swapped (voice changed) between pieces.
+            using (var synth = CreateSynth(voice))
+                synth.Speak(pieces[i], speed, (s, r) =>
+                {
+                    rate = r;
+                    samples.AddRange(s);
+                    return !ct.IsCancellationRequested;
+                }, ct);
+            progress?.Invoke((i + 1) / (double)pieces.Count);
+        }
+
+        ct.ThrowIfCancellationRequested();
+        return (samples.ToArray(), rate);
+    }
+
     private void Set(ReaderState s)
     {
         if (State == s)

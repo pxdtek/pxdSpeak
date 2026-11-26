@@ -7,6 +7,7 @@ using Avalonia.Input.Platform;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.VisualTree;
+using pxdSpeak.Extensions;
 using pxdSpeak.Platform;
 using pxdSpeak.Services;
 using pxdSpeak.Speech;
@@ -14,7 +15,7 @@ using pxdStandard;
 
 namespace pxdSpeak.Views;
 
-/// <summary>The one window: pick and download voices, try them, and the settings.</summary>
+/// <summary>The one window: the Read tab (paste text and hear it with each word lit up), the voices, and the settings.</summary>
 public sealed class MainWindow : Window
 {
     public const string PlacementKey = "main";
@@ -26,16 +27,19 @@ public sealed class MainWindow : Window
     private readonly Dictionary<string, List<Action>> _packRefresh = new();
     private string _filter = "All";
     private StackPanel _lists = null!;
-    private TextBlock _nowName = null!, _nowTags = null!, _speedLabel = null!, _volumeLabel = null!, _storage = null!, _hint = null!;
-    private Button _readButton = null!;
+    private TextBlock _nowName = null!, _nowTags = null!, _volumeLabel = null!, _storage = null!, _hint = null!;
+    private StackPanel _settingsRoot = null!;
     private Border _conflicts = null!;
     private TextBlock _conflictText = null!;
 
     public TabControl Tabs { get; private set; } = null!;
 
+    /// <summary>The Read tab.</summary>
+    public ReaderView Reader { get; }
+
     private AppSettings S => _sp.Settings;
 
-    public MainWindow(Speaker sp, TrayLink? tray = null, Action? quit = null)
+    public MainWindow(Speaker sp, TrayLink? tray = null, Action? quit = null, ProHost? pro = null)
     {
         _sp = sp;
         _tray = tray;
@@ -49,6 +53,9 @@ public sealed class MainWindow : Window
         Icon = BrandIcon.Window(128);
 
         Tabs = new TabControl { Padding = new Thickness(0, 10, 0, 0) };
+        Reader = new ReaderView(sp, () => Tabs!.SelectedIndex = 1, () => Tabs!.SelectedIndex = 2);
+        Reader.VoiceChanged += RefreshAll;
+        Tabs.Items.Add(new TabItem { Header = "Read", Content = new Border { Padding = new Thickness(0, 0, 12, 6), Child = Reader } });
         Tabs.Items.Add(new TabItem { Header = "Voices", Content = Scroll(BuildVoicesTab()) });
         Tabs.Items.Add(new TabItem { Header = "Settings", Content = Scroll(BuildSettingsTab()) });
         var body = new Grid { Margin = new Thickness(22, 10, 22, 16), Children = { Tabs } };
@@ -57,17 +64,16 @@ public sealed class MainWindow : Window
 
         Downloads.Changed += OnDownloadChanged;
         Downloads.Finished += OnDownloadFinished;
-        _sp.StateChanged += OnReaderState;
         Chatterbox.Changed += OnChatterboxChanged;
         Closed += (_, _) =>
         {
             Chatterbox.Changed -= OnChatterboxChanged;
             Downloads.Changed -= OnDownloadChanged;
             Downloads.Finished -= OnDownloadFinished;
-            _sp.StateChanged -= OnReaderState;
         };
         RefreshAll();
         ShowConflicts();
+        pro?.Opened(this);
     }
 
     private static ScrollViewer Scroll(Control c) => new() { Content = new Border { Padding = new Thickness(0, 0, 12, 6), Child = c } };
@@ -82,42 +88,10 @@ public sealed class MainWindow : Window
         _conflicts = new Border { Classes = { "card" }, Background = Brush("#2A2210"), BorderBrush = Brush("#7A5A1A"), Padding = new Thickness(14), IsVisible = false, Child = _conflictText };
         root.Children.Add(_conflicts);
 
-        // Now reading with + try it
+        // Now reading with (reading itself is on the Read tab)
         _nowName = new TextBlock { Classes = { "neon" }, FontSize = 26, FontWeight = FontWeight.Bold };
         _nowTags = new TextBlock { Classes = { "muted" }, FontSize = 12 };
-        var tryBox = new TextBox { Text = S.TryText, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 70, MaxHeight = 160 };
-        tryBox.TextChanged += (_, _) =>
-        {
-            S.TryText = tryBox.Text ?? "";
-            S.Save();
-        };
-        _readButton = new Button { Classes = { "primary" }, Content = "▶  Read it", MinWidth = 120 };
-        _readButton.Click += (_, _) =>
-        {
-            if (_sp.Reader.IsBusy)
-                _sp.Reader.Stop();
-            else
-                _sp.Read(tryBox.Text ?? "");
-        };
-        var speed = new Slider { Minimum = 0.5, Maximum = 2.0, Value = S.Speed, Width = 200, TickFrequency = 0.05, IsSnapToTickEnabled = true, VerticalAlignment = VerticalAlignment.Center };
-        _speedLabel = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Width = 90, Classes = { "muted" } };
-        speed.PropertyChanged += (_, e) =>
-        {
-            if (e.Property != RangeBase.ValueProperty)
-                return;
-            S.Speed = Math.Round(speed.Value, 2);
-            S.Save();
-            ShowSpeed();
-        };
-        ShowSpeed();
         _hint = new TextBlock { Classes = { "muted" }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
-
-        var controls = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto"), Margin = new Thickness(0, 2, 0, 0) };
-        controls.Children.Add(_readButton);
-        Place(controls, new TextBlock { Text = "SPEED", Classes = { "label" }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) }, 2);
-        var speedRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { speed, _speedLabel } };
-        Place(controls, speedRow, 3);
-
         root.Children.Add(Card(new StackPanel
         {
             Spacing = 10,
@@ -125,8 +99,6 @@ public sealed class MainWindow : Window
             {
                 new TextBlock { Text = "NOW READING WITH", Classes = { "label" } },
                 new StackPanel { Spacing = 2, Children = { _nowName, _nowTags } },
-                tryBox,
-                controls,
                 _hint,
             },
         }));
@@ -154,15 +126,15 @@ public sealed class MainWindow : Window
         return root;
     }
 
-    private void ShowSpeed() => _speedLabel.Text = S.Speed.ToString("0.00") + "×";
-
     private void BuildLists()
     {
         _rows.Clear();
         _packRefresh.Clear();
         _lists.Children.Clear();
 
-        _lists.Children.Add(BuildChatterboxCard());
+        // The Store build leaves Chatterbox out: its set-up downloads Python and PyTorch, which Store rules don't allow.
+        if (!Packaged.IsPackaged)
+            _lists.Children.Add(BuildChatterboxCard());
 
         // Kokoro: one pack for all its voices.
         var kokoroHead = SectionHead("KOKORO", "Natural, expressive voices · one 334 MB download for all 28 · Apache-2.0", VoiceCatalog.Kokoro);
@@ -468,12 +440,12 @@ public sealed class MainWindow : Window
         var now = _sp.CurrentVoice;
         _nowName.Text = now.Name;
         _nowTags.Text = $"{now.Family} · {now.Tags}" + (VoiceStore.IsInstalled(now) ? "" : " · not downloaded yet");
-        _hint.Text = S.ReadHotkey is { } k
+        _hint.Text = (S.ReadHotkey is { } k
             ? $"Select text in any app and press {k} to hear it.{(S.ReadAgainStops ? " Press it again to stop." : "")}"
-            : "Set a hotkey on the Settings tab to read selected text from any app.";
+            : "Set a hotkey on the Settings tab to read selected text from any app.") + " Click a downloaded voice to use it; ▶ plays a sample.";
         if (_storage is not null)
             _storage.Text = $"Downloaded voices use {VoiceStore.SizeOnDisk() / 1048576.0:0} MB";
-        OnReaderState(_sp.Reader.State);
+        Reader?.Refresh();
     }
 
     private void OnChatterboxChanged() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
@@ -503,22 +475,11 @@ public sealed class MainWindow : Window
         RefreshAll();
     }
 
-    private void OnReaderState(ReaderState s)
-    {
-        _readButton.Content = s switch
-        {
-            ReaderState.Loading => "■  Loading…",
-            ReaderState.Speaking => "■  Stop",
-            ReaderState.Paused => "■  Stop (paused)",
-            _ => "▶  Read it",
-        };
-    }
-
     // ---- Settings tab ------------------------------------------------------------------------------------------------
 
     private Control BuildSettingsTab()
     {
-        var root = new StackPanel { Spacing = 12 };
+        var root = _settingsRoot = new StackPanel { Spacing = 12 };
 
         var hotkeys = new StackPanel { Spacing = 10 };
         hotkeys.Children.Add(new TextBlock { Text = "HOTKEYS", Classes = { "label" } });
@@ -574,17 +535,29 @@ public sealed class MainWindow : Window
             },
         });
         Place(irow, idleBox, 1);
-        reading.Children.Add(irow);
+        if (!Packaged.IsPackaged)
+            reading.Children.Add(irow);
         root.Children.Add(Card(reading));
 
         root.Children.Add(Card(BuildBrowserCard()));
 
         var app = new StackPanel { Spacing = 10 };
         app.Children.Add(new TextBlock { Text = "APP", Classes = { "label" } });
-        app.Children.Add(Toggle("Start with Windows", "Waits quietly in the tray", Autostart.IsEnabled(), v =>
+        var startup = Toggle("Start with Windows", "Waits quietly in the tray", Autostart.IsEnabled(), v =>
         {
             try { Autostart.Set(v); } catch { /* shown as off next time */ }
-        }, save: false));
+        }, save: false);
+        app.Children.Add(startup);
+        if (Packaged.IsPackaged)
+            _ = Autostart.IsEnabledAsync().ContinueWith(t => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (((Panel)startup).Children.OfType<ToggleSwitch>().FirstOrDefault() is { } sw && t.IsCompletedSuccessfully && sw.IsChecked != t.Result)
+                {
+                    _settingStartup = true;
+                    sw.IsChecked = t.Result;
+                    _settingStartup = false;
+                }
+            }), TaskScheduler.Default);
         app.Children.Add(Toggle("Start in the tray", "Even when opened by hand", S.StartInTray, v => S.StartInTray = v));
         app.Children.Add(Toggle("Show tray icon", "Off: start the app again to open this window", _tray?.Visible ?? pxdLink.TrayIconVisible(TrayLink.AppId), v =>
         {
@@ -604,9 +577,16 @@ public sealed class MainWindow : Window
         srow.Children.Add(_storage);
         Place(srow, openFolder, 1);
         app.Children.Add(srow);
+        var intro = new Button { Classes = { "ghost" }, Content = "Show the intro", Padding = new Thickness(10, 4) };
+        ToolTip.SetTip(intro, "The three \"start here\" cards on the Read tab");
+        intro.Click += (_, _) =>
+        {
+            Reader.ShowIntro();
+            Tabs.SelectedIndex = 0;
+        };
         var quit = new Button { Content = "Quit pxd Speak", HorizontalAlignment = HorizontalAlignment.Left };
         quit.Click += (_, _) => _quit?.Invoke();
-        app.Children.Add(quit);
+        app.Children.Add(new WrapPanel { Children = { quit, intro } });
         root.Children.Add(Card(app));
 
         root.Children.Add(Card(new StackPanel
@@ -636,18 +616,43 @@ public sealed class MainWindow : Window
         p.Children.Add(_browserState);
         p.Children.Add(Toggle("Highlight each word on the page while reading", "Needs the pxd Speak extension in Edge or Chrome", S.BrowserHighlight, v => S.BrowserHighlight = v));
 
-        var folder = Path.Combine(AppContext.BaseDirectory, "BrowserExtension");
+        if (BrowserStores.Listed)
+        {
+            var stores = new WrapPanel();
+            if (BrowserStores.Chrome.Length > 0)
+                stores.Children.Add(StoreButton("Add to Chrome", BrowserStores.Chrome));
+            if (BrowserStores.Edge.Length > 0)
+                stores.Children.Add(StoreButton("Add to Edge", BrowserStores.Edge));
+            p.Children.Add(stores);
+        }
+
         var open = new Button { Content = "Open the extension folder" };
-        open.Click += (_, _) => Open(folder);
+        open.Click += (_, _) => Open(Packaged.BrowserExtensionFolder());
         var edge = new Button { Classes = { "ghost" }, Content = "Copy edge://extensions", Padding = new Thickness(10, 4) };
         edge.Click += async (_, _) => await (Clipboard?.SetTextAsync("edge://extensions") ?? Task.CompletedTask);
         var chrome = new Button { Classes = { "ghost" }, Content = "Copy chrome://extensions", Padding = new Thickness(10, 4) };
         chrome.Click += async (_, _) => await (Clipboard?.SetTextAsync("chrome://extensions") ?? Task.CompletedTask);
-        p.Children.Add(new WrapPanel { Children = { open, edge, chrome } });
+        var unpacked = new StackPanel
+        {
+            Spacing = 8,
+            Children =
+            {
+                new WrapPanel { Children = { open, edge, chrome } },
+                new TextBlock
+                {
+                    Text = "Open edge://extensions (or chrome://extensions), turn on Developer mode, click \"Load unpacked\" and pick the " +
+                           "extension folder.",
+                    Classes = { "muted" }, FontSize = 11, TextWrapping = TextWrapping.Wrap,
+                },
+            },
+        };
+        if (BrowserStores.Listed)
+            p.Children.Add(new Expander { Header = "Advanced: load it unpacked", Content = unpacked, HorizontalAlignment = HorizontalAlignment.Stretch });
+        else
+            p.Children.Add(unpacked);
         p.Children.Add(new TextBlock
         {
-            Text = "Add it once: open edge://extensions (or chrome://extensions), turn on Developer mode, click \"Load unpacked\" and pick the " +
-                   "extension folder. Then select text on any page and press the hotkey, or right-click › Read aloud with pxd Speak. " +
+            Text = "Then select text on any page and press the hotkey, or right-click › Read aloud with pxd Speak. " +
                    "Click a word to jump there; Esc stops. It talks only to this app, on this PC.",
             Classes = { "muted" }, FontSize = 11, TextWrapping = TextWrapping.Wrap,
         });
@@ -673,6 +678,18 @@ public sealed class MainWindow : Window
             _ => ("○ No browser linked yet: add the extension (below), or open your browser", Brush("#F5B14C")),
         };
     }
+
+    private static Button StoreButton(string text, string url)
+    {
+        var b = new Button { Classes = { "primary" }, Content = text, Margin = new Thickness(0, 0, 8, 0) };
+        b.Click += (_, _) => Open(url);
+        return b;
+    }
+
+    /// <summary>A card at the top of the Settings tab (add-ons: "What's new / Pro").</summary>
+    public void AddSettingsCard(Control c) => _settingsRoot.Children.Insert(0, c is Border { Classes: var k } && k.Contains("card") ? c : Card(c));
+
+    private bool _settingStartup;
 
     private Control Credit(string what, string licence, string url)
     {
@@ -712,6 +729,8 @@ public sealed class MainWindow : Window
         var sw = new ToggleSwitch { IsChecked = value, OnContent = "", OffContent = "", VerticalAlignment = VerticalAlignment.Center };
         sw.IsCheckedChanged += (_, _) =>
         {
+            if (_settingStartup)
+                return;
             set(sw.IsChecked == true);
             if (save)
                 S.Save();

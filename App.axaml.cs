@@ -21,6 +21,7 @@ public partial class App : Application
     private WindowIcon? _icon, _pausedIcon;
     private TrayLink _trayLink = null!;
     private readonly CancellationTokenSource _quit = new();
+    private Extensions.ProHost _pro = null!;
 
     public override void Initialize()
     {
@@ -61,6 +62,10 @@ public partial class App : Application
 
             _ = Task.Run(ListenForCommands);
 
+            // Store build only: the Pro add-on (pxdSpeak.Pro.dll) if it ships next to the exe.
+            _pro = new Extensions.ProHost(_sp);
+            Extensions.ProLoader.Load(_pro);
+
             // First start (nothing downloaded and no hotkey trouble aside): open the window so voices can be picked.
             var inTray = Program.StartMinimized || _sp.Settings.StartInTray;
             if (!inTray || _sp.HotkeyConflicts.Count > 0 && !_sp.Settings.StartInTray)
@@ -86,6 +91,9 @@ public partial class App : Application
         var clip = new NativeMenuItem("Read clipboard");
         clip.Click += (_, _) => _sp.Read(Selection.ReadText() ?? "");
         menu.Add(clip);
+        var reader = new NativeMenuItem("Open reader with clipboard");
+        reader.Click += (_, _) => OpenReader(Selection.ReadText() ?? "");
+        menu.Add(reader);
         if (state != ReaderState.Idle)
         {
             var pause = new NativeMenuItem(state == ReaderState.Paused ? "Resume" : "Pause");
@@ -130,7 +138,7 @@ public partial class App : Application
 
         menu.Add(new NativeMenuItem($"Speed: {_sp.Settings.Speed:0.##}×") { Menu = speeds });
         menu.Add(new NativeMenuItemSeparator());
-        var open = new NativeMenuItem("Voices and settings…");
+        var open = new NativeMenuItem("Open pxd Speak…");
         open.Click += (_, _) => OpenWindow();
         menu.Add(open);
         var quit = new NativeMenuItem("Quit");
@@ -184,7 +192,7 @@ public partial class App : Application
             return;
         }
 
-        _window = new MainWindow(_sp, _trayLink, Quit);
+        _window = new MainWindow(_sp, _trayLink, Quit, _pro);
         _window.Closed += (_, _) =>
         {
             _window = null;
@@ -193,6 +201,17 @@ public partial class App : Application
         };
         _window.Show();
         _window.Activate();
+    }
+
+    /// <summary>Opens the window on the Read tab with <paramref name="text"/> in it, reading it with each word lit up.</summary>
+    private void OpenReader(string text)
+    {
+        OpenWindow();
+        if (_window is null)
+            return;
+        _window.Tabs.SelectedIndex = 0;
+        if (!string.IsNullOrWhiteSpace(text))
+            _window.Reader.LoadAndRead(text);
     }
 
     private void Quit()

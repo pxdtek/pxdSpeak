@@ -33,6 +33,7 @@ public static class SelfTest
             r.AppendLine("Voices folder: " + VoiceStore.Folder);
 
             Text(r);
+            Doc(r);
             Catalog(r);
             Window(r);
             BrandIcon.Write(Path.Combine(dir, "pxdSpeak.ico"));
@@ -74,6 +75,23 @@ public static class SelfTest
         Check(r, "pieces: split under 400 chars at sentence ends", pieces.All(p => p.Length <= 400 && p.EndsWith('.')) && string.Join(" ", pieces) == long1, $"{pieces.Count} pieces");
     }
 
+    private static void Doc(StringBuilder r)
+    {
+        var d = ReadDoc.From("# Shopping list\n- Eggs\n- **Milk**\n\nThis line was wrapped by\nan e-mail program. It goes on.\nShort heading\nNext part here.");
+        Check(r, "reader: headings and list items are their own blocks", d.Blocks.Count == 6, $"{d.Blocks.Count} blocks");
+        Check(r, "reader: bullets are shown, not read; # and ** are dropped", d.Words[0] == "Shopping" && d.Words.Contains("Milk") && !d.Words.Contains("-")
+            && d.Headings[0] && d.Blocks[0][0].Text == "Shopping" && d.Blocks[1][0] == new ReadDoc.Piece("-", -1), string.Join("|", d.Words));
+        Check(r, "reader: a wrapped line is joined", d.Blocks[3].Count(p => p.Word >= 0) == 11, string.Join(" ", d.Blocks[3].Select(p => p.Text)));
+        Check(r, "reader: sentences", d.Sentences.Count == 7 && d.SentenceOf(d.Words.IndexOf("goes")) == 4, string.Join(" ", d.Sentences));
+        Check(r, "reader: every word maps to a block", d.BlockOf.Count == d.WordCount && d.BlockEnds[^1]);
+    }
+
+    private const string SampleText =
+        "The old lighthouse stood at the edge of the cliff, its paint worn thin by a hundred winters.\n\n" +
+        "Every evening the keeper climbed the spiral stairs, lit the lamp, and watched the ships slip past in the dark. Some nights were calm. " +
+        "Others roared with wind and rain, but the light never failed.\n\n" +
+        "Paste anything here (an article, an e-mail, a chapter) and press play: each word lights up as it is read, and the view follows along.";
+
     private static void Catalog(StringBuilder r)
     {
         Check(r, "catalog: 28 English Kokoro voices", VoiceCatalog.KokoroVoices.Count == 28);
@@ -97,7 +115,7 @@ public static class SelfTest
             ShowInTaskbar = false,
         };
         w.Show();
-        foreach (var (tab, name) in new[] { (0, "voices"), (1, "settings") })
+        foreach (var (tab, name) in new[] { (0, "read"), (1, "voices"), (2, "settings") })
         {
             w.Tabs.SelectedIndex = tab;
             w.Width = 640;
@@ -108,7 +126,23 @@ public static class SelfTest
             bmp.Save(Path.Combine(Dir!, name + ".png"));
         }
 
+        // Reading, mid-sentence, with the intro closed.
         w.Tabs.SelectedIndex = 0;
+        w.Reader.HideIntro();
+        w.Reader.ShowForTest(SampleText, 26);
+        w.UpdateLayout();
+        using (var playing = new RenderTargetBitmap(new PixelSize(640, 800)))
+        {
+            playing.Render(w);
+            playing.Save(Path.Combine(Dir!, "read-playing.png"));
+        }
+
+        var pos = w.Reader.Position;
+        Check(r, "reader: highlighted word and sentence", pos.Word == 26 && pos.Sentence == 1 && pos.Sentences == 5, $"{pos}");
+        w.Reader.StopReading();
+        Check(r, "reader: Stop brings the editor back", !w.Reader.IsReading && w.Reader.Text == SampleText);
+
+        w.Tabs.SelectedIndex = 1;
         w.UpdateLayout();
         var scroller = w.GetVisualDescendants().OfType<ScrollViewer>().Where(s => s.IsEffectivelyVisible).MaxBy(s => s.Extent.Height)!;
         foreach (var y in new[] { 1500, 2100, 2700 })

@@ -164,6 +164,8 @@ public static class WindowsVoices
     {
         if (_all is not null)
             return _all;
+        if (!OperatingSystem.IsWindows())
+            return _all = [];   // headless renders on other systems
         try
         {
             _all = SpeechSynthesizer.AllVoices
