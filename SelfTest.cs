@@ -45,6 +45,7 @@ public static class SelfTest
             Speech(r, dir);
             Timing(r);
             Bridge(r);
+            PackagedChecks(r);
         }
         catch (Exception ex)
         {
@@ -54,6 +55,48 @@ public static class SelfTest
 
         r.AppendLine(_fail == 0 ? "ALL PASSED" : $"{_fail} FAILED");
         File.WriteAllText(Path.Combine(dir, "report.txt"), r.ToString());
+    }
+
+    /// <summary>
+    /// The Store build's own behaviour, checked only when this copy really runs as an MSIX package (installed from the
+    /// Store, or registered with Add-AppxPackage -Register for testing): start-up task, extension folder, Store licence.
+    /// </summary>
+    private static void PackagedChecks(StringBuilder r)
+    {
+        if (Environment.GetEnvironmentVariable("PXDSPEAK_FAKE_PACKAGED") == "1" || !Platform.Packaged.IsPackaged)
+        {
+            r.AppendLine("packaged: not running as an MSIX package, Store checks skipped");
+            return;
+        }
+
+        r.AppendLine("packaged: running as an MSIX package");
+        try
+        {
+            var task = Windows.ApplicationModel.StartupTask.GetAsync(Services.Autostart.StartupTaskId).AsTask().GetAwaiter().GetResult();
+            Check(r, "packaged: start-up task is declared", task is not null, task?.State.ToString() ?? "missing");
+        }
+        catch (Exception ex)
+        {
+            Check(r, "packaged: start-up task is declared", false, ex.Message);
+        }
+
+        var docs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "pxd Speak");
+        var existed = Directory.Exists(docs);
+        var ext = Platform.Packaged.BrowserExtensionFolder();
+        Check(r, "packaged: browser extension copied to Documents", ext.StartsWith(docs, StringComparison.OrdinalIgnoreCase) && File.Exists(Path.Combine(ext, "manifest.json")), ext);
+        if (!existed)
+            try { Directory.Delete(docs, recursive: true); } catch { /* left for the user; harmless */ }
+
+        try
+        {
+            var ctx = Windows.Services.Store.StoreContext.GetDefault();
+            var license = ctx.GetAppLicenseAsync().AsTask().GetAwaiter().GetResult();
+            Check(r, "packaged: Microsoft Store licence answers", license is not null, $"active={license?.IsActive}, add-ons={license?.AddOnLicenses.Count}");
+        }
+        catch (Exception ex)
+        {
+            Check(r, "packaged: Microsoft Store licence answers", false, ex.Message);
+        }
     }
 
     private static void Check(StringBuilder r, string what, bool ok, string detail = "")
