@@ -30,3 +30,4 @@ appsettings.*.local.json
 *.db
 *.sqlite
 *.log
+packaging/out/

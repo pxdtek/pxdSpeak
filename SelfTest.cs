@@ -107,7 +107,12 @@ public static class SelfTest
     {
         var settings = new AppSettings { ReadOnly = true };
         using var sp = new Speaker(interactive: false, settings);
-        var w = new MainWindow(sp)
+        // The Store build's Pro add-on, when it sits next to the exe: its tools and Settings card are drawn too.
+        var pro = new Extensions.ProHost(sp);
+        Extensions.ProLoader.Load(pro);
+        if (Extensions.ProLoader.Loaded.Count > 0 || Extensions.ProLoader.Error is not null)
+            Check(r, "pro: add-on loaded", Extensions.ProLoader.Error is null && Extensions.ProLoader.Loaded.Count == 1, Extensions.ProLoader.Error ?? "");
+        var w = new MainWindow(sp, pro: pro)
         {
             WindowStartupLocation = WindowStartupLocation.Manual,
             Position = new PixelPoint(-30000, -30000),
@@ -141,6 +146,21 @@ public static class SelfTest
         Check(r, "reader: highlighted word and sentence", pos.Word == 26 && pos.Sentence == 1 && pos.Sentences == 5, $"{pos}");
         w.Reader.StopReading();
         Check(r, "reader: Stop brings the editor back", !w.Reader.IsReading && w.Reader.Text == SampleText);
+
+        if (Extensions.ProLoader.Loaded.Count > 0)
+        {
+            w.Reader.Text = SampleText;
+            w.UpdateLayout();
+            using var proShot = new RenderTargetBitmap(new PixelSize(640, 800));
+            proShot.Render(w);
+            proShot.Save(Path.Combine(Dir!, "read-pro.png"));
+            w.Tabs.SelectedIndex = 2;
+            w.UpdateLayout();
+            using var proSettings = new RenderTargetBitmap(new PixelSize(640, 800));
+            proSettings.Render(w);
+            proSettings.Save(Path.Combine(Dir!, "settings-pro.png"));
+            Check(r, "pro: three tools on the Read tab", w.Reader.ProTools.Children.Count == 3, $"{w.Reader.ProTools.Children.Count}");
+        }
 
         w.Tabs.SelectedIndex = 1;
         w.UpdateLayout();

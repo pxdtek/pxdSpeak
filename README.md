@@ -1,8 +1,16 @@
 # pxd Speak
 
-Select text in any app, press **Ctrl + Alt + R**, and hear it read aloud in a natural AI voice. Free voices, all running offline on your PC: nothing you read is sent anywhere.
+Paste text and hear it read aloud in a natural AI voice, with each word lit up as it's heard. Or select text in any app and press **Ctrl + Alt + R**. Free voices, all running offline on your PC: nothing you read is sent anywhere.
 
-<p><img src="docs/screenshots/voices.png" width="400" alt="Voices tab"> <img src="docs/screenshots/settings.png" width="400" alt="Settings tab"></p>
+<p><img src="docs/screenshots/read.png" width="400" alt="Read tab, reading with word highlighting"> <img src="docs/screenshots/voices.png" width="400" alt="Voices tab"></p>
+
+## The Read tab
+
+Paste or type text (or **Paste and read**) and press ▶. While it reads, the sentence is tinted, the word being heard lights up, and the view scrolls along (it holds still for a few seconds when you scroll yourself). Click any word to read from there; **Space** pauses, **Esc** stops and gives you the editable text back. ⏮ / ⏭ skip a sentence. The text is kept between starts.
+
+First start shows three "Start here" cards: download the Kokoro voices (334 MB, one click), paste and press play, and the hotkey plus the browser extension. *Settings › Show the intro* brings them back. The tray's **Open reader with clipboard** opens the Read tab with what you copied and starts reading.
+
+<p><img src="docs/screenshots/start.png" width="400" alt="First start"> <img src="docs/screenshots/settings.png" width="400" alt="Settings tab"></p>
 
 ## Voices
 
@@ -24,17 +32,21 @@ Voices download from the sherpa-onnx `tts-models` release on GitHub into `%LOCAL
 - **Ctrl + Alt + R**: read the selected text (press again to stop). Nothing selected? It reads the clipboard (can be turned off).
 - **Ctrl + Alt + P**: pause / resume. A Stop hotkey can be set too.
 - The selection is grabbed with a copy; your clipboard is put back right after (and kept out of Win+V history).
-- Tray menu: read selection, read clipboard, pick voice, speed, settings.
+- Tray menu: read selection, read clipboard, open the reader with the clipboard, pick voice, speed, settings.
 
 ## Word highlighting on web pages
 
-The `BrowserExtension` folder (next to the exe) is a small Manifest V3 extension for Edge and Chrome. Load it once: `edge://extensions` (or `chrome://extensions`) › Developer mode › **Load unpacked** › pick the folder.
+The `BrowserExtension` folder (next to the exe) is a small Manifest V3 extension for Edge and Chrome (`build-extension.sh` packs it for the Chrome Web Store and Edge Add-ons). Until it's listed there, load it once: `edge://extensions` (or `chrome://extensions`) › Developer mode › **Load unpacked** › pick the folder.
 
 Then select text on a page and press the hotkey (or right-click › *Read aloud with pxd Speak*): each word lights up as it's heard, the sentence gets a soft tint, and the page scrolls along (unless you're scrolling yourself). Click a word to jump there; Esc stops. The page is put back exactly as it was afterwards.
 
 - The extension talks only to pxd Speak, over a WebSocket on `127.0.0.1:47321`; the app accepts only browser-extension origins, so web pages can't use it.
 - Windows voices report exact word times. Kokoro, Piper and Chatterbox are read a sentence at a time and the words are placed within each sentence by length and pauses (about 0.12 s off on average, measured against a Windows voice's exact times).
 - Without the extension (or in other apps) the hotkey still reads the selection, just without highlighting.
+
+## Microsoft Store version
+
+The same app is being prepared for the Microsoft Store (free, with an optional one-time **Pro** add-on that adds new things: save as MP3/WAV, read whole files, audiobooks; every feature here stays free). The Store build differs only where Store rules require it: the Store updates it (no self-update), *Start with Windows* uses the package's StartupTask, Chatterbox is left out (its set-up downloads Python and PyTorch), and "load unpacked" uses a copy of the extension in `Documents\pxd Speak`. Packaging: `packaging/build-msix.ps1`; listing, privacy policy and screenshots: [`docs/store`](docs/store). Privacy policy: [docs/store/privacy.md](docs/store/privacy.md).
 
 ## Command line
 
@@ -44,6 +56,7 @@ pxdSpeak.exe --voices                                                  list voic
 pxdSpeak.exe --download kokoro-multi-lang-v1_0                         download a voice pack
 pxdSpeak.exe --wav "text" kokoro:af_heart out.wav [speed]              write speech to a file
 pxdSpeak.exe --self-test DIR                                           headless checks, window renders, sample WAVs
+pxdSpeak.exe --store-assets DIR                                        MSIX logos, Store screenshots, extension store pictures
 ```
 
 `PXDSPEAK_DATA_DIR` moves settings and voices (tests).

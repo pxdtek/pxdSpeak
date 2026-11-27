@@ -35,9 +35,12 @@ public partial class App : Application
         {
             _lifetime = lifetime;
             lifetime.ShutdownMode = ShutdownMode.OnExplicitShutdown;
-            if (SelfTest.Dir is { } dir)
+            if (SelfTest.Dir is { } dir || StoreAssets.Dir is { } dir2 && (dir = dir2) is not null)
             {
-                SelfTest.Run(dir);
+                if (StoreAssets.Dir is not null)
+                    StoreAssets.Run(dir);
+                else
+                    SelfTest.Run(dir);
                 Dispatcher.UIThread.Post(() => lifetime.Shutdown());
                 base.OnFrameworkInitializationCompleted();
                 return;

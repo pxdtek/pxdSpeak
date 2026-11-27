@@ -160,10 +160,12 @@ public sealed class ReaderView : UserControl
         var actions = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto"), Margin = new Thickness(0, 8, 0, 0) };
         actions.Children.Add(_pasteRead);
         Place(actions, _clear, 1);
-        ProTools.Margin = new Thickness(6, 0, 0, 0);
-        ProTools.VerticalAlignment = VerticalAlignment.Center;
-        Place(actions, ProTools, 2);
         Place(actions, _count, 3);
+        // Add-on tools (Store build) get their own row, shown only when there are some.
+        ProTools.Margin = new Thickness(-4, 4, 0, 0);
+        ProTools.Children.CollectionChanged += (_, _) => ProTools.IsVisible = ProTools.Children.Count > 0;
+        ProTools.IsVisible = false;
+        var actionRows = new StackPanel { Children = { actions, ProTools } };
 
         // ── transport ──
         _back = Transport(PrevIcon, "Back one sentence");
@@ -174,7 +176,7 @@ public sealed class ReaderView : UserControl
         _next.Click += (_, _) => Jump(+1);
         _stop = Transport(StopIcon, "Stop (Esc)");
         _stop.Click += (_, _) => StopReading();
-        _progressText = new TextBlock { Classes = { "muted" }, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+        _progressText = new TextBlock { Classes = { "muted" }, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         _progress = new ProgressBar { Minimum = 0, Maximum = 1, Height = 6, MinHeight = 6, Foreground = Brush("#19F58C"), VerticalAlignment = VerticalAlignment.Center };
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center, Children = { _back, _play, _next, _stop } };
         var where = new StackPanel { Spacing = 6, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(18, 0, 0, 0), Children = { _progressText, _progress } };
@@ -193,8 +195,8 @@ public sealed class ReaderView : UserControl
         root.Children.Add(top);
         Grid.SetRow(_textArea, 2);
         root.Children.Add(_textArea);
-        Grid.SetRow(actions, 3);
-        root.Children.Add(actions);
+        Grid.SetRow(actionRows, 3);
+        root.Children.Add(actionRows);
         Grid.SetRow(transportCard, 4);
         root.Children.Add(transportCard);
         Content = root;
@@ -224,6 +226,16 @@ public sealed class ReaderView : UserControl
             StopReading();
             _editor.Text = value;
         }
+    }
+
+    /// <summary>The selected part of the text box, or all of it when nothing is selected (Pro: Save as audio).</summary>
+    public string SelectedOrAllText => !_reading && _editor.SelectedText is { Length: > 0 } sel && !string.IsNullOrWhiteSpace(sel) ? sel : Text;
+
+    /// <summary>A line in the transport bar while nothing is being read ("Opened book.epub · 12 chapters").</summary>
+    public void ShowStatus(string text)
+    {
+        if (!_reading)
+            _progressText.Text = text;
     }
 
     /// <summary>Puts <paramref name="text"/> in the box and reads it from the start (tray: "Open reader with clipboard").</summary>

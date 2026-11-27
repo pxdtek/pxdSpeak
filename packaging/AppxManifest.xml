@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  pxd Speak for the Microsoft Store. build-msix.ps1 fills in the {{…}} values:
+    IDENTITY_NAME, PUBLISHER, PUBLISHER_DISPLAY_NAME  from Partner Center › Product identity (placeholders until the name is reserved)
+    VERSION                                           from pxdSpeak.csproj, as 1.2.3.0 (the Store needs the last part to be 0)
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap3 desktop rescap">
+
+  <Identity Name="{{IDENTITY_NAME}}" Publisher="{{PUBLISHER}}" Version="{{VERSION}}" ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>pxd Speak</DisplayName>
+    <PublisherDisplayName>{{PUBLISHER_DISPLAY_NAME}}</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <Application Id="pxdSpeak" Executable="pxdSpeak.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="pxd Speak"
+        Description="Read any text aloud in natural voices that run on your PC, with each word highlighted."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" ShortName="pxd Speak">
+          <uap:ShowNameOnTiles>
+            <uap:ShowOn Tile="square150x150Logo" />
+          </uap:ShowNameOnTiles>
+        </uap:DefaultTile>
+      </uap:VisualElements>
+      <Extensions>
+        <!-- Start with Windows (Settings › App › "Start with Windows"); off until the user turns it on -->
+        <desktop:Extension Category="windows.startupTask" Executable="pxdSpeak.exe" EntryPoint="Windows.FullTrustApplication">
+          <desktop:StartupTask TaskId="pxdSpeakStartup" Enabled="false" DisplayName="pxd Speak" />
+        </desktop:Extension>
+        <!-- pxdSpeak.exe on the command line (the read, read-selection, stop and pause switches) -->
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="pxdSpeak.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="pxdSpeak.exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

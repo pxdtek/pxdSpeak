@@ -19,6 +19,8 @@ public static class Autostart
     {
         if (!Platform.Packaged.IsPackaged)
             return IsEnabled();
+        if (!OperatingSystem.IsWindows())
+            return false;   // headless renders elsewhere
         try
         {
             var task = await Windows.ApplicationModel.StartupTask.GetAsync(StartupTaskId);

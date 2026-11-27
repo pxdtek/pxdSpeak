@@ -27,16 +27,26 @@ internal static class Program
             return code;
 
         // The Store updates the Store build itself; apps from the Store may not update themselves.
-        if (!Commands.HasAction(args) && !Platform.Packaged.IsPackaged && pxdStandard.pxdUpdate.BeforeStart(UpdateRepo, UpdateAsset, args))
+        var headless = args.Any(a => a.Equals("--store-assets", StringComparison.OrdinalIgnoreCase));
+        if (!headless && !Commands.HasAction(args) && !Platform.Packaged.IsPackaged && pxdStandard.pxdUpdate.BeforeStart(UpdateRepo, UpdateAsset, args))
             return 0;
 
         pxdStandard.pxdChrome.Configure(TrayLink.AppId, AppSettings.Folder);
         StartMinimized = args.Any(a => a.Equals("--minimized", StringComparison.OrdinalIgnoreCase));
 
         var test = Array.FindIndex(args, a => a.Equals("--self-test", StringComparison.OrdinalIgnoreCase));
+        var assets = Array.FindIndex(args, a => a.Equals("--store-assets", StringComparison.OrdinalIgnoreCase));
+        if (assets >= 0 && assets + 1 < args.Length)
+        {
+            StoreAssets.Dir = args[assets + 1];
+            StoreAssets.Prepare();
+            test = assets;
+        }
+
         if (test >= 0 && test + 1 < args.Length)
         {
-            SelfTest.Dir = args[test + 1];
+            if (StoreAssets.Dir is null)
+                SelfTest.Dir = args[test + 1];
             AppBuilder.Configure<App>()
                 .UseSkia()
                 .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
